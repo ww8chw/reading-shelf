@@ -36,8 +36,11 @@ button:disabled { opacity:.6; }
 </form>
 <script>
 const SALT = "LMxiTMSF03aCa9BaGFKKZQ==", IV = "lWZG/p//6sT+Bku+", ITER = 310000, VER = "027fc5007c";
+const CDN = "https://cdn.jsdelivr.net/gh/ww8chw/reading-shelf@da6ac2649a190ecb0c91434176c2b4aa6e181ab3/site.enc";
 const ub = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const enc = fetch("site.enc?v=" + VER).then(r => { if (!r.ok) throw new Error("下載失敗 " + r.status); return r.arrayBuffer(); });
+// 先走 jsDelivr（GitHub Pages 在台灣常只有幾十 KB/s），失敗再退回同站檔案
+const get = u => fetch(u).then(r => { if (!r.ok) throw new Error("下載失敗 " + r.status); return r.arrayBuffer(); });
+const enc = get(CDN).catch(() => get("site.enc?v=" + VER));
 const st = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
              set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
              del: k => { try { localStorage.removeItem(k); } catch (e) {} } };
