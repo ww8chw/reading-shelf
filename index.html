@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="閱讀筆記">
+<title>閱讀筆記</title>
+<style>
+:root { --bg:#f7f4ee; --paper:#fffdf9; --ink:#1d2127; --ink3:#7b838c; --line:#e4ddd1; --accent:#b5582b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#15181c; --paper:#1c2025; --ink:#e7e3dc; --ink3:#8a857d; --line:#2f343b; --accent:#e59a6e; } }
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif; padding:16px; }
+form { width:min(360px,100%); background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:26px 24px; }
+h1 { font-family:"Songti TC","Noto Serif TC",serif; font-size:22px; margin:0 0 6px; }
+p { color:var(--ink3); font-size:14px; margin:0 0 16px; }
+input[type=password] { width:100%; font-size:18px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); }
+label { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--ink3); margin:12px 0 16px; }
+button { width:100%; font-size:16px; padding:10px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; }
+button:disabled { opacity:.6; }
+.err { color:#c4302b; min-height:20px; font-size:14px; margin:10px 0 0; }
+</style>
+</head>
+<body>
+<form id="f" autocomplete="on">
+  <h1>閱讀筆記</h1>
+  <p>請輸入密碼</p>
+  <input id="pw" type="password" autocomplete="current-password" autofocus required>
+  <label><input id="rem" type="checkbox" checked>在這台裝置記住，下次免輸入</label>
+  <button id="go" type="submit">開啟</button>
+  <div class="err" id="err"></div>
+</form>
+<script>
+const SALT = "LMxiTMSF03aCa9BaGFKKZQ==", IV = "lWZG/p//6sT+Bku+", ITER = 310000, VER = "027fc5007c";
+const ub = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const enc = fetch("site.enc?v=" + VER).then(r => { if (!r.ok) throw new Error("下載失敗 " + r.status); return r.arrayBuffer(); });
+const st = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+             set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+             del: k => { try { localStorage.removeItem(k); } catch (e) {} } };
+async function derive(pw) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: ub(SALT), iterations: ITER, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
+}
+async function openWith(key, rememberKey) {
+  const buf = await enc;
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: ub(IV) }, key, buf);
+  if (rememberKey) {
+    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+    st.set(KEYNAME, btoa(String.fromCharCode(...raw)));
+  }
+  const html = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+  document.open(); document.write(html); document.close();
+}
+const KEYNAME = "wv-key-" + SALT.slice(0, 8);
+const err = document.getElementById("err"), go = document.getElementById("go");
+(async () => {
+  const saved = st.get(KEYNAME);
+  if (!saved) return;
+  go.disabled = true; go.textContent = "開啟中…";
+  try { await openWith(await crypto.subtle.importKey("raw", ub(saved), "AES-GCM", true, ["decrypt"]), false); }
+  catch (e) { st.del(KEYNAME); go.disabled = false; go.textContent = "開啟"; }
+})();
+document.getElementById("f").addEventListener("submit", async e => {
+  e.preventDefault(); err.textContent = ""; go.disabled = true; go.textContent = "解密中…";
+  try {
+    await openWith(await derive(document.getElementById("pw").value.trim()), document.getElementById("rem").checked);
+  } catch (x) {
+    err.textContent = x && x.name === "OperationError" ? "密碼不對，請再試一次" : "開啟失敗：" + (x && x.message || x);
+    go.disabled = false; go.textContent = "開啟";
+  }
+});
+</script>
+</body>
+</html>
